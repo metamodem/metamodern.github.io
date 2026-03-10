@@ -347,7 +347,7 @@
 
 <!-- HERO -->
 <section id="hero">
-  <p class="hero-tag">AI Designer · Generative Art · Visual Research</p>
+  <p class="hero-tag">AI Designer · AI Research · Visual Research</p>
   <h1 class="hero-title">
     Design at the edge<br>of <em>human</em><br>& machine
   </h1>
