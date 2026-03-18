@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>СУПРЕМАТОИД</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --black: #0a0a0a;
+    --red: #D62828;
+    --white: #F5F0E8;
+    --yellow: #F7B731;
+    --blue: #1B3A7A;
+    --gray: #2a2a2a;
+  }
+
+  body {
+    background: var(--black);
+    color: var(--white);
+    font-family: 'Space Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100dvh;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+  }
+
+  #game-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  #hud {
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 4px;
+  }
+
+  .hud-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hud-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--red);
+    text-transform: uppercase;
+  }
+
+  .hud-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    line-height: 1;
+    color: var(--white);
+    letter-spacing: 2px;
+  }
+
+  .shape-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .shape-preview {
+    width: 32px;
+    height: 32px;
+  }
+
+  canvas {
+    display: block;
+    background: var(--black);
+    border: 2px solid var(--gray);
+    cursor: none;
+  }
+
+  #overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(10,10,10,0.93);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    z-index: 10;
+  }
+
+  #overlay.hidden { display: none; }
+
+  .overlay-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 64px;
+    letter-spacing: 6px;
+    color: var(--red);
+    line-height: 1;
+    text-align: center;
+  }
+
+  .overlay-sub {
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--white);
+    opacity: 0.6;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .suprema-deco {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: var(--black);
+    background: var(--red);
+    border: none;
+    padding: 12px 40px;
+    cursor: pointer;
+    transition: background 0.15s;
+    outline: none;
+  }
+  .btn:hover { background: var(--white); }
+
+  #lives-row {
+    display: flex;
+    gap: 6px;
+  }
+  .life-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--red);
+  }
+  .life-dot.dead {
+    background: var(--gray);
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <div id="hud">
+    <div class="hud-block">
+      <span class="hud-label">счёт</span>
+      <span class="hud-value" id="score-display">0</span>
+    </div>
+    <div class="shape-indicator">
+      <span class="hud-label" style="text-align:center">форма</span>
+      <svg class="shape-preview" id="shape-svg" viewBox="0 0 32 32"></svg>
+    </div>
+    <div class="hud-block" style="align-items:flex-end">
+      <span class="hud-label">жизни</span>
+      <div id="lives-row"></div>
+    </div>
+  </div>
+
+  <div style="position:relative">
+    <canvas id="c"></canvas>
+    <div id="overlay">
+      <div>
+        <div style="display:flex;gap:12px;margin-bottom:16px;justify-content:center">
+          <div style="width:48px;height:48px;background:var(--red)"></div>
+          <div style="width:24px;height:24px;background:var(--white);align-self:flex-end"></div>
+          <div style="width:36px;height:36px;background:var(--yellow);align-self:center"></div>
+        </div>
+        <div class="overlay-title" id="overlay-title">СУПРЕ<br>МАТОИД</div>
+      </div>
+      <div class="overlay-sub" id="overlay-sub">Шар меняет форму — меняется отражение</div>
+      <button class="btn" id="start-btn">НАЧАТЬ</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('start-btn');
+const scoreDisplay = document.getElementById('score-display');
+const livesRow = document.getElementById('lives-row');
+const shapeSvg = document.getElementById('shape-svg');
+const overlayTitle = document.getElementById('overlay-title');
+const overlaySub = document.getElementById('overlay-sub');
+
+// Responsive sizing
+function resize() {
+  const maxW = Math.min(window.innerWidth - 8, 400);
+  const maxH = window.innerHeight - 90;
+  const ratio = 4/3;
+  let w = maxW, h = maxW / ratio;
+  if (h > maxH) { h = maxH; w = h * ratio; }
+  canvas.width = Math.floor(w);
+  canvas.height = Math.floor(h);
+}
+resize();
+window.addEventListener('resize', () => { resize(); if(running) initBricks(); });
+
+// ─── SHAPES ────────────────────────────────────────────
+// Each shape: { name, draw(ctx,x,y,r,angle), reflect(nx,ny,angle) -> {vx,vy} }
+// angle = current rotation of ball in radians
+
+const SHAPES = [
+  {
+    // CIRCLE — normal reflection
+    name: 'КРУГ',
+    color: '#F5F0E8',
+    svgPath: '<circle cx="16" cy="16" r="12" fill="#F5F0E8"/>',
+    draw(ctx, x, y, r) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI*2);
+      ctx.fill();
+    },
+    reflect(vx, vy, nx, ny) {
+      const dot = vx*nx + vy*ny;
+      return { vx: vx - 2*dot*nx, vy: vy - 2*dot*ny };
+    }
+  },
+  {
+    // SQUARE — adds slight perpendicular nudge, more angular
+    name: 'КВАДРАТ',
+    color: '#D62828',
+    svgPath: '<rect x="4" y="4" width="24" height="24" fill="#D62828"/>',
+    draw(ctx, x, y, r, angle) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillRect(-r, -r, r*2, r*2);
+      ctx.restore();
+    },
+    reflect(vx, vy, nx, ny) {
+      const dot = vx*nx + vy*ny;
+      let rx = vx - 2*dot*nx;
+      let ry = vy - 2*dot*ny;
+      // square adds tangential kick
+      const tx = -ny, ty = nx;
+      const tdot = rx*tx + ry*ty;
+      rx += tx * tdot * 0.15;
+      ry += ty * tdot * 0.15;
+      return normalize(rx, ry, Math.hypot(vx, vy));
+    }
+  },
+  {
+    // TRIANGLE — random extra angle deviation
+    name: 'ТРЕУГОЛЬНИК',
+    color: '#F7B731',
+    svgPath: '<polygon points="16,3 30,29 2,29" fill="#F7B731"/>',
+    draw(ctx, x, y, r, angle) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(0, -r);
+      ctx.lineTo(r*0.87, r*0.5);
+      ctx.lineTo(-r*0.87, r*0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    },
+    reflect(vx, vy, nx, ny) {
+      const dot = vx*nx + vy*ny;
+      let rx = vx - 2*dot*nx;
+      let ry = vy - 2*dot*ny;
+      // triangle: random angular chaos ±20°
+      const dev = (Math.random()-0.5) * 0.7;
+      const cos = Math.cos(dev), sin = Math.sin(dev);
+      const spd = Math.hypot(vx,vy);
+      return normalize(rx*cos - ry*sin, rx*sin + ry*cos, spd);
+    }
+  },
+  {
+    // DIAMOND — sharp reflection, bounces more vertically
+    name: 'РОМБ',
+    color: '#1B3A7A',
+    svgPath: '<polygon points="16,2 30,16 16,30 2,16" fill="#1B3A7A" stroke="#F5F0E8" stroke-width="1"/>',
+    draw(ctx, x, y, r, angle) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(0, -r);
+      ctx.lineTo(r, 0);
+      ctx.lineTo(0, r);
+      ctx.lineTo(-r, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    },
+    reflect(vx, vy, nx, ny) {
+      const dot = vx*nx + vy*ny;
+      let rx = vx - 2*dot*nx;
+      let ry = vy - 2*dot*ny;
+      // diamond amplifies vertical component
+      ry *= 1.2;
+      return normalize(rx, ry, Math.hypot(vx,vy));
+    }
+  },
+  {
+    // CROSS — wildcard: sometimes reverses horizontal
+    name: 'КРЕСТ',
+    color: '#D62828',
+    svgPath: '<rect x="12" y="2" width="8" height="28" fill="#D62828"/><rect x="2" y="12" width="28" height="8" fill="#D62828"/>',
+    draw(ctx, x, y, r, angle) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      const t = r*0.38;
+      ctx.fillRect(-t, -r, t*2, r*2);
+      ctx.fillRect(-r, -t, r*2, t*2);
+      ctx.restore();
+    },
+    reflect(vx, vy, nx, ny) {
+      const dot = vx*nx + vy*ny;
+      let rx = vx - 2*dot*nx;
+      let ry = vy - 2*dot*ny;
+      // cross: 30% chance to flip horizontal component
+      if (Math.random() < 0.3) rx = -rx;
+      return normalize(rx, ry, Math.hypot(vx,vy));
+    }
+  }
+];
+
+function normalize(vx, vy, speed) {
+  const len = Math.hypot(vx, vy);
+  if (len === 0) return { vx: 0, vy: -speed };
+  return { vx: vx/len*speed, vy: vy/len*speed };
+}
+
+// ─── GAME STATE ────────────────────────────────────────
+let W, H, running = false;
+let ball, paddle, bricks, score, lives, shapeIdx, animId;
+const MAX_LIVES = 3;
+const BALL_SPEED_BASE = 4;
+let gameOver = false, won = false;
+
+const PALETTE = ['#D62828','#F5F0E8','#F7B731','#1B3A7A','#D62828','#F5F0E8'];
+
+function getWH() { return { W: canvas.width, H: canvas.height }; }
+
+function initBricks() {
+  ({ W, H } = getWH());
+  const cols = 8, rows = 5;
+  const margin = Math.floor(W*0.04);
+  const bw = (W - margin*2) / cols;
+  const bh = Math.floor(H * 0.045);
+  const startY = Math.floor(H * 0.06);
+  bricks = [];
+  for (let r=0; r<rows; r++) {
+    for (let c=0; c<cols; c++) {
+      // suprematist layout: some bricks are double-wide or colored differently
+      const special = (r===0 && c===0) || (r===2 && c===cols-1);
+      bricks.push({
+        x: margin + c*bw,
+        y: startY + r*(bh+4),
+        w: bw-4,
+        h: bh,
+        alive: true,
+        color: PALETTE[(r+c)%PALETTE.length],
+        points: (rows-r)*10
+      });
+    }
+  }
+}
+
+function initGame() {
+  ({ W, H } = getWH());
+  score = 0;
+  lives = MAX_LIVES;
+  shapeIdx = 0;
+
+  const pr = W * 0.09, ph = H * 0.022;
+  paddle = {
+    x: W/2,
+    y: H - H*0.05,
+    w: pr*2,
+    h: ph,
+    targetX: W/2
+  };
+
+  ball = {
+    x: W/2,
+    y: H - H*0.12,
+    r: W*0.022,
+    vx: BALL_SPEED_BASE * (Math.random()>0.5?1:-1),
+    vy: -BALL_SPEED_BASE,
+    angle: 0,
+    launched: true
+  };
+
+  initBricks();
+  updateHUD();
+}
+
+// ─── HUD ───────────────────────────────────────────────
+function updateHUD() {
+  scoreDisplay.textContent = score;
+  livesRow.innerHTML = '';
+  for (let i=0; i<MAX_LIVES; i++) {
+    const d = document.createElement('div');
+    d.className = 'life-dot' + (i >= lives ? ' dead' : '');
+    livesRow.appendChild(d);
+  }
+  const s = SHAPES[shapeIdx];
+  shapeSvg.innerHTML = s.svgPath;
+}
+
+// ─── INPUT ────────────────────────────────────────────
+let mouseX = -1, touchX = -1;
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouseX = e.clientX - rect.left;
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  touchX = e.touches[0].clientX - rect.left;
+}, { passive: false });
+canvas.addEventListener('touchstart', e => {
+  const rect = canvas.getBoundingClientRect();
+  touchX = e.touches[0].clientX - rect.left;
+}, { passive: true });
+
+// ─── GAME LOOP ────────────────────────────────────────
+function update() {
+  ({ W, H } = getWH());
+  const inputX = touchX >= 0 ? touchX : mouseX >= 0 ? mouseX : paddle.x;
+  paddle.x += (inputX - paddle.x) * 0.22;
+  paddle.x = Math.max(paddle.w/2, Math.min(W - paddle.w/2, paddle.x));
+
+  // move ball
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+  ball.angle += 0.04;
+
+  // wall collisions
+  if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx = Math.abs(ball.vx); }
+  if (ball.x + ball.r > W) { ball.x = W - ball.r; ball.vx = -Math.abs(ball.vx); }
+  if (ball.y - ball.r < 0) { ball.y = ball.r; ball.vy = Math.abs(ball.vy); }
+
+  // lose ball
+  if (ball.y - ball.r > H) {
+    lives--;
+    updateHUD();
+    if (lives <= 0) { endGame(false); return; }
+    // reset ball
+    ball.x = paddle.x;
+    ball.y = paddle.y - paddle.h/2 - ball.r - 2;
+    const spd = BALL_SPEED_BASE + score/300;
+    ball.vx = spd*(Math.random()>0.5?1:-1)*0.7;
+    ball.vy = -spd;
+  }
+
+  // paddle collision
+  const px = paddle.x, py = paddle.y;
+  const ph2 = paddle.h/2, pw2 = paddle.w/2;
+  if (
+    ball.y + ball.r >= py - ph2 &&
+    ball.y - ball.r <= py + ph2 &&
+    ball.x + ball.r >= px - pw2 &&
+    ball.x - ball.r <= px + pw2 &&
+    ball.vy > 0
+  ) {
+    // shape-based reflection
+    const shape = SHAPES[shapeIdx];
+    const nx = 0, ny = -1;
+    const result = shape.reflect(ball.vx, ball.vy, nx, ny);
+    ball.vx = result.vx;
+    ball.vy = result.vy;
+    if (ball.vy > 0) ball.vy = -Math.abs(ball.vy);
+    ball.y = py - ph2 - ball.r;
+
+    // advance shape
+    shapeIdx = (shapeIdx + 1) % SHAPES.length;
+
+    // slight speed increase
+    const spd = Math.min(Math.hypot(ball.vx, ball.vy) * 1.03, BALL_SPEED_BASE*2.2);
+    const n2 = normalize(ball.vx, ball.vy, spd);
+    ball.vx = n2.vx; ball.vy = n2.vy;
+
+    updateHUD();
+    flashEffect();
+  }
+
+  // brick collisions
+  let aliveBricks = 0;
+  for (const b of bricks) {
+    if (!b.alive) continue;
+    aliveBricks++;
+    const bx = b.x, by = b.y, bw = b.w, bh = b.h;
+    if (
+      ball.x + ball.r > bx &&
+      ball.x - ball.r < bx + bw &&
+      ball.y + ball.r > by &&
+      ball.y - ball.r < by + bh
+    ) {
+      b.alive = false;
+      score += b.points;
+      updateHUD();
+      spawnParticles(bx + bw/2, by + bh/2, b.color);
+
+      // determine collision normal
+      const overlapL = (ball.x + ball.r) - bx;
+      const overlapR = (bx + bw) - (ball.x - ball.r);
+      const overlapT = (ball.y + ball.r) - by;
+      const overlapB = (by + bh) - (ball.y - ball.r);
+      const minO = Math.min(overlapL, overlapR, overlapT, overlapB);
+      let nx=0, ny=0;
+      if (minO===overlapL) { nx=-1; ball.x=bx-ball.r; }
+      else if (minO===overlapR) { nx=1; ball.x=bx+bw+ball.r; }
+      else if (minO===overlapT) { ny=-1; ball.y=by-ball.r; }
+      else { ny=1; ball.y=by+bh+ball.r; }
+
+      const result = SHAPES[shapeIdx].reflect(ball.vx, ball.vy, nx, ny);
+      ball.vx = result.vx; ball.vy = result.vy;
+      break;
+    }
+  }
+
+  if (aliveBricks === 0) { endGame(true); return; }
+
+  updateParticles();
+}
+
+// ─── PARTICLES ────────────────────────────────────────
+let particles = [];
+function spawnParticles(x, y, color) {
+  for (let i=0; i<10; i++) {
+    const angle = Math.random()*Math.PI*2;
+    const spd = 1.5 + Math.random()*3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle)*spd,
+      vy: Math.sin(angle)*spd,
+      life: 1,
+      decay: 0.04+Math.random()*0.04,
+      size: 3+Math.random()*5,
+      color,
+      shape: Math.random()<0.5 ? 'rect' : 'circle'
+    });
+  }
+}
+function updateParticles() {
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy;
+    p.life -= p.decay;
+  }
+}
+
+// ─── FLASH ────────────────────────────────────────────
+let flashAlpha = 0;
+function flashEffect() { flashAlpha = 0.25; }
+
+// ─── DRAW ─────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // background grid (suprematist subtle)
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 1;
+  const gs = Math.floor(W/10);
+  for (let x=0; x<W; x+=gs) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y=0; y<H; y+=gs) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  // bricks
+  for (const b of bricks) {
+    if (!b.alive) continue;
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(b.x+b.w-3, b.y, 3, b.h);
+    ctx.fillRect(b.x, b.y+b.h-3, b.w, 3);
+  }
+
+  // paddle — white rectangle, suprematist
+  ctx.fillStyle = '#F5F0E8';
+  ctx.fillRect(paddle.x - paddle.w/2, paddle.y - paddle.h/2, paddle.w, paddle.h);
+  // paddle accent line
+  ctx.fillStyle = SHAPES[shapeIdx].color;
+  ctx.fillRect(paddle.x - paddle.w/2, paddle.y - paddle.h/2, paddle.w, 3);
+
+  // ball
+  ctx.fillStyle = SHAPES[shapeIdx].color;
+  SHAPES[shapeIdx].draw(ctx, ball.x, ball.y, ball.r, ball.angle);
+
+  // particles
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    if (p.shape === 'rect') {
+      ctx.fillRect(p.x-p.size/2, p.y-p.size/2, p.size, p.size);
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size/2, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // flash
+  if (flashAlpha > 0) {
+    ctx.fillStyle = `rgba(245,240,232,${flashAlpha})`;
+    ctx.fillRect(0,0,W,H);
+    flashAlpha -= 0.04;
+  }
+}
+
+function loop() {
+  if (!running) return;
+  update();
+  draw();
+  animId = requestAnimationFrame(loop);
+}
+
+function endGame(didWin) {
+  running = false;
+  gameOver = true;
+  won = didWin;
+  cancelAnimationFrame(animId);
+  draw();
+  overlay.classList.remove('hidden');
+  overlayTitle.textContent = didWin ? 'ПОБЕДА' : 'КОНЕЦ';
+  overlaySub.textContent = `Счёт: ${score}`;
+  startBtn.textContent = 'СНОВА';
+}
+
+startBtn.addEventListener('click', () => {
+  overlay.classList.add('hidden');
+  initGame();
+  running = true;
+  loop();
+});
+
+// initial draw of empty board for aesthetics
+resize();
+initGame();
+draw();
+</script>
+</body>
+</html>
