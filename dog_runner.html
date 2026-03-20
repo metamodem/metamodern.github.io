@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Пёс Бежит</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #f5e6c8;
+    font-family: 'Comic Neue', cursive;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    touch-action: none;
+  }
+
+  #game-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    background: #fdf6e3;
+    border: 4px solid #2c1a0e;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 8px 8px 0 #2c1a0e;
+  }
+
+  #score-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: #2c1a0e;
+    color: #f5e6c8;
+    font-family: 'Bangers', cursive;
+    font-size: 20px;
+    letter-spacing: 2px;
+  }
+
+  #score-bar span { color: #ffd166; }
+
+  canvas {
+    display: block;
+    width: 100%;
+    image-rendering: pixelated;
+    cursor: pointer;
+  }
+
+  #overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(253, 246, 227, 0.92);
+    z-index: 10;
+  }
+
+  #overlay h1 {
+    font-family: 'Bangers', cursive;
+    font-size: 52px;
+    color: #2c1a0e;
+    letter-spacing: 4px;
+    text-shadow: 4px 4px 0 #ffd166;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  #overlay .sub {
+    font-size: 15px;
+    color: #7a5c3a;
+    margin-bottom: 28px;
+    text-align: center;
+    padding: 0 20px;
+  }
+
+  #overlay .best {
+    font-family: 'Bangers', cursive;
+    font-size: 22px;
+    color: #c0392b;
+    margin-bottom: 20px;
+    letter-spacing: 1px;
+  }
+
+  .btn {
+    background: #2c1a0e;
+    color: #fdf6e3;
+    font-family: 'Bangers', cursive;
+    font-size: 26px;
+    letter-spacing: 3px;
+    padding: 12px 40px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 4px 4px 0 #ffd166;
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+
+  .btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 #ffd166;
+  }
+
+  #comic-text {
+    position: absolute;
+    font-family: 'Bangers', cursive;
+    font-size: 0px;
+    color: #c0392b;
+    background: #ffd166;
+    border: 4px solid #2c1a0e;
+    padding: 6px 16px;
+    border-radius: 8px;
+    box-shadow: 4px 4px 0 #2c1a0e;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 20;
+    transform: rotate(-8deg);
+    white-space: nowrap;
+    transition: none;
+    top: 30%;
+    left: 50%;
+    transform: translateX(-50%) rotate(-6deg) scale(0);
+    letter-spacing: 4px;
+  }
+
+  #comic-text.show {
+    animation: comicPop 1.2s ease forwards;
+  }
+
+  @keyframes comicPop {
+    0%   { opacity: 0; transform: translateX(-50%) rotate(-6deg) scale(0); font-size: 0px; }
+    20%  { opacity: 1; transform: translateX(-50%) rotate(-6deg) scale(1.3); font-size: 42px; }
+    40%  { transform: translateX(-50%) rotate(-6deg) scale(0.9); font-size: 38px; }
+    60%  { transform: translateX(-50%) rotate(-6deg) scale(1.1); font-size: 40px; }
+    80%  { opacity: 1; transform: translateX(-50%) rotate(-6deg) scale(1); font-size: 40px; }
+    100% { opacity: 0; transform: translateX(-50%) rotate(-6deg) scale(1); font-size: 40px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <div id="score-bar">
+    ПЁС БЕЖИТ &nbsp;|&nbsp; СЧЁТ: <span id="score-display">0</span> &nbsp;|&nbsp; РЕКОРД: <span id="best-display">0</span>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="overlay">
+    <h1>ПЁС БЕЖИТ</h1>
+    <div class="sub">Нажми или пробел чтобы прыгнуть<br>Избегай 💩 и других псов!</div>
+    <div class="best" id="overlay-best" style="display:none"></div>
+    <button class="btn" id="start-btn">ПОБЕЖАЛИ!</button>
+  </div>
+
+  <div id="comic-text">БАЙТ!</div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const W = 480, H = 200;
+canvas.width = W;
+canvas.height = H;
+
+const GROUND = H - 30;
+const GRAVITY = 0.6;
+const JUMP_VEL = -13;
+const DOUBLE_JUMP_VEL = -11;
+
+let state = 'idle'; // idle, running, dead
+let score = 0, bestScore = 0;
+let speed = 4;
+let frameCount = 0;
+let nextObstacleIn = 80;
+let comicTimer = 0;
+
+// Dog player
+let dog = {
+  x: 70, y: GROUND, w: 44, h: 36,
+  vy: 0, onGround: true, doubleJumped: false,
+  legPhase: 0
+};
+
+let obstacles = [];
+let clouds = [{x:100,y:30,w:80},{x:280,y:18,w:60},{x:420,y:40,w:70}];
+let groundOffset = 0;
+
+// Score elements
+const scoreDisplay = document.getElementById('score-display');
+const bestDisplay = document.getElementById('best-display');
+const overlay = document.getElementById('overlay');
+const overlayBest = document.getElementById('overlay-best');
+const comicEl = document.getElementById('comic-text');
+
+function startGame() {
+  state = 'running';
+  score = 0; speed = 4; frameCount = 0;
+  nextObstacleIn = 80;
+  dog.y = GROUND; dog.vy = 0; dog.onGround = true; dog.doubleJumped = false;
+  obstacles = [];
+  overlay.style.display = 'none';
+  comicEl.className = '';
+  loop();
+}
+
+function jump() {
+  if (state === 'idle') { startGame(); return; }
+  if (state === 'dead') { showOverlay(); return; }
+  if (dog.onGround) {
+    dog.vy = JUMP_VEL;
+    dog.onGround = false;
+    dog.doubleJumped = false;
+  } else if (!dog.doubleJumped) {
+    dog.vy = DOUBLE_JUMP_VEL;
+    dog.doubleJumped = true;
+  }
+}
+
+document.addEventListener('keydown', e => { if(e.code==='Space'||e.code==='ArrowUp') { e.preventDefault(); jump(); }});
+canvas.addEventListener('click', jump);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); jump(); }, {passive:false});
+document.getElementById('start-btn').addEventListener('click', e => { e.stopPropagation(); startGame(); });
+
+function showOverlay() {
+  state = 'idle';
+  if (score > bestScore) bestScore = score;
+  bestDisplay.textContent = bestScore;
+  overlayBest.style.display = score > 0 ? 'block' : 'none';
+  overlayBest.textContent = '💀 СЧЁТ: ' + score + (score >= bestScore && score > 0 ? '  🏆 РЕКОРД!' : '');
+  document.getElementById('start-btn').textContent = 'ЕЩЁ РАЗ!';
+  overlay.style.display = 'flex';
+}
+
+function spawnObstacle() {
+  const isPoodog = Math.random() < 0.25;
+  obstacles.push({
+    x: W + 20,
+    type: isPoodog ? 'dog' : 'poo',
+    passed: false
+  });
+  nextObstacleIn = 60 + Math.random() * 80 + Math.max(0, (8 - speed) * 10);
+}
+
+// ---- DRAWING FUNCTIONS ----
+
+function drawSky() {
+  ctx.fillStyle = '#e8f4fd';
+  ctx.fillRect(0, 0, W, GROUND);
+}
+
+function drawGround() {
+  ctx.fillStyle = '#c8a96e';
+  ctx.fillRect(0, GROUND, W, H - GROUND);
+  ctx.strokeStyle = '#a0784a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND);
+  ctx.lineTo(W, GROUND);
+  ctx.stroke();
+
+  // ground dash pattern
+  ctx.strokeStyle = '#b8945a';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 8; i++) {
+    let xpos = ((groundOffset * 0.5 + i * 64) % (W + 60)) - 30;
+    ctx.beginPath();
+    ctx.moveTo(xpos, GROUND + 8);
+    ctx.lineTo(xpos + 40, GROUND + 8);
+    ctx.stroke();
+  }
+}
+
+function drawCloud(c) {
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.beginPath();
+  ctx.ellipse(c.x, c.y, c.w * 0.5, 14, 0, 0, Math.PI * 2);
+  ctx.ellipse(c.x - c.w * 0.2, c.y + 5, c.w * 0.3, 10, 0, 0, Math.PI * 2);
+  ctx.ellipse(c.x + c.w * 0.2, c.y + 6, c.w * 0.28, 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// SVG-style dog (running player) drawn via canvas
+function drawDog(x, y, legPhase, color='#8B5E3C', eyeColor='#2c1a0e') {
+  const bx = x, by = y; // bottom center
+
+  // legs (4 legs)
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+
+  // Back legs
+  let bl1 = Math.sin(legPhase) * 10;
+  let bl2 = Math.sin(legPhase + Math.PI) * 10;
+  ctx.beginPath(); ctx.moveTo(bx - 8, by - 12); ctx.lineTo(bx - 12 + bl1, by); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx - 8, by - 12); ctx.lineTo(bx - 4 + bl2, by); ctx.stroke();
+
+  // Front legs
+  let fl1 = Math.sin(legPhase + 1) * 10;
+  let fl2 = Math.sin(legPhase + 1 + Math.PI) * 10;
+  ctx.beginPath(); ctx.moveTo(bx + 8, by - 14); ctx.lineTo(bx + 4 + fl1, by); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + 8, by - 14); ctx.lineTo(bx + 14 + fl2, by); ctx.stroke();
+
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(bx, by - 18, 18, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Tail (wagging)
+  let tailWag = Math.sin(legPhase * 2) * 15;
+  ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(bx - 16, by - 20);
+  ctx.quadraticCurveTo(bx - 30, by - 32 + tailWag, bx - 24, by - 42 + tailWag);
+  ctx.stroke();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(bx - 16, by - 20);
+  ctx.quadraticCurveTo(bx - 30, by - 32 + tailWag, bx - 24, by - 42 + tailWag);
+  ctx.stroke();
+
+  // Head
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(bx + 16, by - 24, 13, 11, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Ear (floppy)
+  let earFlop = Math.sin(legPhase) * 4;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(bx + 10, by - 32 + earFlop, 6, 10, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 2; ctx.stroke();
+
+  // Eye
+  ctx.fillStyle = eyeColor;
+  ctx.beginPath();
+  ctx.ellipse(bx + 22, by - 25, 3, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.ellipse(bx + 23, by - 26, 1, 1, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Nose
+  ctx.fillStyle = '#2c1a0e';
+  ctx.beginPath();
+  ctx.ellipse(bx + 29, by - 22, 3, 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mouth (smile)
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(bx + 27, by - 19, 3, 0.1, Math.PI - 0.1);
+  ctx.stroke();
+
+  // Tongue
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.ellipse(bx + 28, by - 16, 2.5, 3.5, 0.1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawPoo(x, y) {
+  // Poo emoji style drawn via canvas
+  const bx = x, by = y;
+
+  ctx.fillStyle = '#6B3A2A';
+  // Base swirl layers
+  ctx.beginPath();
+  ctx.ellipse(bx, by, 14, 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.fillStyle = '#7D4A32';
+  ctx.beginPath();
+  ctx.ellipse(bx, by - 7, 11, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  ctx.fillStyle = '#8B5E3C';
+  ctx.beginPath();
+  ctx.ellipse(bx, by - 13, 7, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // tip
+  ctx.fillStyle = '#7D4A32';
+  ctx.beginPath();
+  ctx.ellipse(bx, by - 18, 4, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // eyes
+  ctx.fillStyle = '#2c1a0e';
+  ctx.beginPath(); ctx.ellipse(bx - 4, by - 5, 2, 2, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(bx + 4, by - 5, 2, 2, 0, 0, Math.PI*2); ctx.fill();
+
+  // smile
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(bx, by - 2, 4, 0.2, Math.PI - 0.2); ctx.stroke();
+}
+
+function drawObstacleDog(x, y, legPhase) {
+  // Smaller sitting/idle dog in different color - gray/spotted
+  const bx = x, by = y;
+
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 3; ctx.lineCap = 'round';
+
+  // sitting legs
+  ctx.beginPath(); ctx.moveTo(bx - 6, by - 10); ctx.lineTo(bx - 10, by); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + 6, by - 10); ctx.lineTo(bx + 10, by); ctx.stroke();
+
+  // body
+  ctx.fillStyle = '#aaa';
+  ctx.beginPath();
+  ctx.ellipse(bx, by - 16, 13, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 2; ctx.stroke();
+
+  // spots
+  ctx.fillStyle = '#555';
+  ctx.beginPath(); ctx.ellipse(bx - 4, by - 18, 4, 3, 0.3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(bx + 5, by - 13, 3, 2, -0.2, 0, Math.PI*2); ctx.fill();
+
+  // tail
+  let tailWag2 = Math.sin(legPhase * 3) * 12;
+  ctx.strokeStyle = '#aaa'; ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(bx - 12, by - 17);
+  ctx.quadraticCurveTo(bx - 26, by - 26 + tailWag2, bx - 20, by - 36 + tailWag2);
+  ctx.stroke();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(bx - 12, by - 17);
+  ctx.quadraticCurveTo(bx - 26, by - 26 + tailWag2, bx - 20, by - 36 + tailWag2);
+  ctx.stroke();
+
+  // head
+  ctx.fillStyle = '#aaa';
+  ctx.beginPath();
+  ctx.ellipse(bx + 14, by - 22, 11, 10, 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 2; ctx.stroke();
+
+  // ear
+  ctx.fillStyle = '#888';
+  ctx.beginPath();
+  ctx.ellipse(bx + 8, by - 30, 5, 8, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c1a0e'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // eye
+  ctx.fillStyle = '#2c1a0e';
+  ctx.beginPath(); ctx.ellipse(bx + 19, by - 23, 2.5, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.ellipse(bx + 20, by - 24, 1, 1, 0, 0, Math.PI * 2); ctx.fill();
+
+  // nose
+  ctx.fillStyle = '#2c1a0e';
+  ctx.beginPath(); ctx.ellipse(bx + 24, by - 20, 2.5, 2, 0, 0, Math.PI * 2); ctx.fill();
+
+  // "ZZZ" sleeping bubble
+  ctx.fillStyle = '#2c1a0e';
+  ctx.font = 'bold 10px Comic Neue, cursive';
+  ctx.fillText('z z z', bx + 18, by - 36);
+}
+
+// collision box
+function getBox(ob) {
+  if (ob.type === 'poo') return { x: ob.x - 12, y: GROUND - 22, w: 24, h: 22 };
+  else return { x: ob.x - 12, y: GROUND - 38, w: 28, h: 38 };
+}
+
+function checkCollision() {
+  const dx = dog.x, dy = dog.y;
+  const dogBox = { x: dx - 14, y: dy - 34, w: 36, h: 34 };
+  for (let ob of obstacles) {
+    if (ob.passed) continue;
+    const ob_box = getBox(ob);
+    if (
+      dogBox.x < ob_box.x + ob_box.w &&
+      dogBox.x + dogBox.w > ob_box.x &&
+      dogBox.y < ob_box.y + ob_box.h &&
+      dogBox.y + dogBox.h > ob_box.y
+    ) { return true; }
+  }
+  return false;
+}
+
+function showComicByte() {
+  comicEl.className = '';
+  void comicEl.offsetWidth; // reflow
+  comicEl.className = 'show';
+}
+
+let raf;
+function loop() {
+  if (state !== 'running') return;
+  raf = requestAnimationFrame(loop);
+
+  frameCount++;
+  groundOffset += speed;
+
+  // Speed increase
+  if (frameCount % 400 === 0) speed = Math.min(speed + 0.5, 11);
+
+  // Clouds
+  clouds.forEach(c => { c.x -= speed * 0.3; if (c.x < -c.w) c.x = W + c.w; });
+
+  // Dog physics
+  dog.vy += GRAVITY;
+  dog.y += dog.vy;
+  if (dog.y >= GROUND) {
+    dog.y = GROUND;
+    dog.vy = 0;
+    dog.onGround = true;
+    dog.doubleJumped = false;
+  }
+  dog.legPhase += dog.onGround ? 0.28 : 0.1;
+
+  // Spawn obstacles
+  nextObstacleIn--;
+  if (nextObstacleIn <= 0) spawnObstacle();
+
+  // Move obstacles
+  obstacles.forEach(ob => {
+    ob.x -= speed;
+    if (!ob.passed && ob.x < dog.x - 10) {
+      ob.passed = true;
+      score++;
+      scoreDisplay.textContent = score;
+      if (score > bestScore) { bestScore = score; bestDisplay.textContent = bestScore; }
+      if (ob.type === 'dog') showComicByte();
+    }
+  });
+  obstacles = obstacles.filter(ob => ob.x > -60);
+
+  if (checkCollision()) {
+    state = 'dead';
+    drawFrame();
+    setTimeout(showOverlay, 600);
+    return;
+  }
+
+  drawFrame();
+}
+
+function drawFrame() {
+  ctx.clearRect(0, 0, W, H);
+  drawSky();
+  clouds.forEach(drawCloud);
+  drawGround();
+
+  // Obstacles
+  obstacles.forEach(ob => {
+    if (ob.type === 'poo') drawPoo(ob.x, GROUND);
+    else drawObstacleDog(ob.x, GROUND, frameCount * 0.08);
+  });
+
+  // Player
+  drawDog(dog.x, dog.y, dog.legPhase);
+
+  // Dead shake effect
+  if (state === 'dead') {
+    ctx.fillStyle = 'rgba(200,50,50,0.15)';
+    ctx.fillRect(0, 0, W, H);
+    // draw X eyes
+    ctx.strokeStyle = '#c0392b';
+    ctx.lineWidth = 3;
+    // override: redraw dog with X eyes
+    drawDog(dog.x, dog.y, dog.legPhase, '#8B5E3C', '#c0392b');
+    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 3;
+    let ex = dog.x + 22, ey = dog.y - 25;
+    ctx.beginPath(); ctx.moveTo(ex-3,ey-3); ctx.lineTo(ex+3,ey+3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ex+3,ey-3); ctx.lineTo(ex-3,ey+3); ctx.stroke();
+  }
+}
+
+// Initial idle render
+(function idleRender() {
+  if (state !== 'idle') return;
+  frameCount += 0.5;
+  dog.legPhase += 0.12;
+  drawFrame();
+  requestAnimationFrame(idleRender);
+})();
+</script>
+</body>
+</html>
